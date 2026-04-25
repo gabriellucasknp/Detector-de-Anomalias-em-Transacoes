@@ -1,9 +1,9 @@
-hu# 🚀 Detector de Anomalias em Transações Financeiras
+# 🔍 Detector de Anomalias em Transações Financeiras
 
 Projeto **full-stack de análise de dados** para detecção de anomalias em transações
 financeiras, usando **Python, PySpark, Pandas, NumPy, MySQL e FastAPI**, com
-visualizações em **Matplotlib/Seaborn/Plotly** e ambiente pronto para **deploy na AWS**
-(ECS Fargate + RDS + Terraform + GitHub Actions).
+visualizações em **Matplotlib/Seaborn/Plotly**. Roda localmente com Docker e pode
+ser publicado em qualquer plataforma cloud — Railway, Render ou AWS.
 
 ---
 
@@ -18,7 +18,7 @@ visualizações em **Matplotlib/Seaborn/Plotly** e ambiente pronto para **deploy
 - [API FastAPI](#-api-fastapi)
 - [Notebook de EDA](#-notebook-de-eda)
 - [Testes](#-testes)
-- [Deploy na AWS](#-deploy-na-aws)
+- [Deploy](#-deploy)
 - [Algoritmos usados](#-algoritmos-usados)
 - [Troubleshooting](#-troubleshooting)
 
@@ -122,8 +122,7 @@ detecto_de_anomalias em transações/
 | **API** | FastAPI + Uvicorn |
 | **Visualização** | Matplotlib, Seaborn, Plotly |
 | **Infra** | Docker, docker-compose |
-| **Deploy** | AWS ECS Fargate, RDS MySQL, ALB, ECR |
-| **IaC** | Terraform |
+| **Deploy** | Docker, Railway, Render (ou AWS opcional) |
 | **CI/CD** | GitHub Actions |
 | **Logging** | structlog |
 | **Testes** | pytest + pytest-cov |
@@ -136,7 +135,7 @@ detecto_de_anomalias em transações/
 - **Docker + Docker Compose**
 - **Java 17** (para PySpark) — opcional se usar Docker
 - **Git**
-- (Opcional para AWS) AWS CLI + Terraform 1.5+
+- (Opcional) AWS CLI + Terraform 1.5+ — só se quiser ir pra AWS
 
 ---
 
@@ -296,72 +295,35 @@ pipeline end-to-end com dataset sintético gerado pelas fixtures.
 
 ---
 
-## ☁️ Deploy na AWS
+## ☁️ Deploy
 
-### Arquitetura AWS provisionada pelo Terraform
+### Opção 1 — Railway (recomendado, gratuito)
 
-```
-Internet ─▶ ALB (public subnets)
-              │
-              ▼
-         ECS Fargate Service (private subnets)
-              │
-              ▼
-         RDS MySQL (private subnets)
+A forma mais rápida de colocar no ar sem gastar nada:
 
-         + ECR (imagem Docker)
-         + CloudWatch Logs
-         + NAT Gateway
-         + IAM Roles
-```
+1. Crie uma conta em [railway.app](https://railway.app)
+2. Crie um novo projeto → **Deploy from GitHub repo**
+3. Adicione um serviço MySQL pelo marketplace do Railway
+4. Configure as variáveis de ambiente (copie do `.env.example`)
+5. Pronto — Railway detecta o `Dockerfile` e faz o deploy automaticamente
 
-### Passos
+### Opção 2 — Render (também gratuito)
 
-**1. Configurar AWS CLI**
+1. Crie uma conta em [render.com](https://render.com)
+2. New → Web Service → conecte o repositório
+3. Runtime: Docker
+4. Adicione um banco MySQL (ou use SQLite para simplificar)
+5. Configure as variáveis de ambiente e deploy
+
+### Opção 3 — AWS (avançado, pago)
+
+O projeto já tem toda a infraestrutura pronta em `deploy/terraform/` caso você queira ir pra AWS futuramente — ECS Fargate, RDS, ALB, ECR e CloudWatch. Mas isso gera custos mensais (~$80–110/mês rodando 24/7), então não é obrigatório para portfólio.
+
 ```bash
-aws configure
-```
-
-**2. Provisionar infraestrutura com Terraform**
-```bash
+# Só se quiser mesmo:
 cd deploy/terraform
-copy terraform.tfvars.example terraform.tfvars    # preencha db_password
-terraform init
-terraform plan
-terraform apply
-```
-
-No final, o Terraform mostra:
-- `alb_url` — URL pública da aplicação
-- `ecr_repository_url` — para push da imagem
-- `rds_endpoint` — endpoint do banco
-
-**3. Build e push da imagem**
-```bash
-# Autentica no ECR
-aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin <ECR_URL>
-
-# Build e push
-docker build -f deploy/Dockerfile.prod -t <ECR_URL>:latest .
-docker push <ECR_URL>:latest
-```
-
-**4. CI/CD automático (GitHub Actions)**
-
-Configure os secrets no GitHub:
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-
-Ao fazer push em `main`, o workflow:
-1. Roda os testes
-2. Faz build da imagem
-3. Push para ECR
-4. Atualiza o ECS Service
-
-**5. Aplicar schema no RDS (primeira vez)**
-```bash
-mysql -h <RDS_ENDPOINT> -u admin -p anomaly_db < data/schema.sql
+copy terraform.tfvars.example terraform.tfvars
+terraform init && terraform apply
 ```
 
 ---
@@ -493,7 +455,7 @@ Se falhar, rode: `pytest tests/test_preprocessor.py tests/test_detector.py -v`
 - ✅ `python main.py` → pipeline completo
 - ✅ `uvicorn app:app` → API + Swagger em /docs
 - ✅ `notebooks/01-exploratory_analysis.ipynb` → EDA completa
-- ✅ `deploy/` → pronto para AWS (Terraform + GitHub Actions)
+- ✅ `deploy/` → Railway/Render (fácil) ou AWS (Terraform + GitHub Actions)
 - ✅ `pytest tests/` → testes unitários
 
 ---
