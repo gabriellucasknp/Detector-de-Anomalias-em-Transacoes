@@ -1,6 +1,4 @@
 # Detector-de-Anomalias-em-Dados-de-Transações
-## ✅ PROJETO CONCLUÍDO
-
 ### Estrutura Base
 - [x] .gitignore
 - [x] .env.example
