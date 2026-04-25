@@ -1,0 +1,76 @@
+# =====================================================================
+# Configurações gerais do Detector de Anomalias
+# =====================================================================
+
+# Banco de dados MySQL
+database:
+  host: ${DB_HOST:-localhost}
+  port: ${DB_PORT:-3306}
+  user: ${DB_USER:-root}
+  password: ${DB_PASSWORD:-rootpass}
+  database: ${DB_NAME:-anomaly_db}
+  pool_size: 5
+
+# PySpark
+spark:
+  master: "local[*]"
+  app_name: "AnomalyDetector"
+  driver_memory: "2g"
+  executor_memory: "2g"
+  shuffle_partitions: 8
+
+# Geração de dados sintéticos
+data_generation:
+  n_transacoes: 10000
+  anomaly_rate: 0.03 # 3% de anomalias
+  n_clientes: 500
+  seed: 42
+  tipos_transacao:
+    - "compra"
+    - "transferencia"
+    - "saque"
+    - "pagamento"
+    - "deposito"
+  locais:
+    - "São Paulo"
+    - "Rio de Janeiro"
+    - "Belo Horizonte"
+    - "Brasília"
+    - "Salvador"
+    - "Fortaleza"
+    - "Curitiba"
+    - "Manaus"
+  dispositivos:
+    - "mobile"
+    - "web"
+    - "atm"
+    - "pos"
+  locais_suspeitos:
+    - "Desconhecido"
+    - "País Estrangeiro"
+    - "VPN Location"
+
+# Detecção de anomalias
+detection:
+  isolation_forest:
+    contamination: 0.03
+    n_estimators: 100
+    random_state: 42
+  dbscan:
+    eps: 0.5
+    min_samples: 5
+  zscore:
+    threshold: 3.0
+
+# API FastAPI
+api:
+  title: "Detector de Anomalias API"
+  version: "1.0.0"
+  description: "API para detecção de anomalias em transações financeiras"
+  cors_origins:
+    - "*"
+
+# Logging
+logging:
+  level: INFO
+  format: json

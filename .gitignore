@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Ambientes virtuais
+venv/
+env/
+.venv/
+ENV/
+
+# Variáveis de ambiente
+.env
+*.env.local
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Dados
+data/raw/*.csv
+data/processed/*.csv
+data/processed/*.parquet
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Spark
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Terraform
+deploy/terraform/.terraform/
+deploy/terraform/*.tfstate
+deploy/terraform/*.tfstate.backup
+deploy/terraform/.terraform.lock.hcl
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Modelos treinados
+*.pkl
+*.joblib
+models/

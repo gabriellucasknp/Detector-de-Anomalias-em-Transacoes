@@ -1,0 +1,64 @@
+# Docker Compose - Ambiente de desenvolvimento local
+# Sobe MySQL + aplicação Python com PySpark
+version: '3.8'
+
+services:
+  # Banco de dados MySQL para armazenar transações e anomalias
+  mysql:
+    image: mysql:8.0
+    container_name: anomaly_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: anomaly_db
+      MYSQL_USER: appuser
+      MYSQL_PASSWORD: apppass
+    ports:
+      - "3306:3306"
+    volumes:
+      # Schema inicial é executado automaticamente na criação do container
+      - ./data/schema.sql:/docker-entrypoint-initdb.d/0.sql
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-prootpass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - anomaly_net
+
+  # Aplicação Python (API FastAPI + Pipeline PySpark)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: anomaly_app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: rootpass
+      DB_NAME: anomaly_db
+      APP_ENV: development
+      SPARK_MASTER: "local[*]"
+    ports:
+      - "8000:8000"
+      - "8888:8888"  # Jupyter
+    volumes:
+      - ./:/app
+      - spark_data:/tmp/spark
+    networks:
+      - anomaly_net
+    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  mysql_data:
+  spark_data:
+
+networks:
+  anomaly_net:
+    driver: bridge

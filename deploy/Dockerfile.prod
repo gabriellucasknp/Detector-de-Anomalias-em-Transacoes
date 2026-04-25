@@ -1,0 +1,70 @@
+# =====================================================================
+# Dockerfile de PRODUÇÃO - multi-stage build
+# Otimizado para deploy em AWS ECS Fargate
+# =====================================================================
+
+# ---------- Estágio 1: build ----------
+FROM python:3.11-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /build
+
+# Dependências de build apenas (serão descartadas no stage final)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    default-libmysqlclient-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+
+# Instala dependências em /install para copiar depois
+RUN pip install --upgrade pip && \
+    pip install --prefix=/install --no-cache-dir -r requirements.txt
+
+
+# ---------- Estágio 2: runtime ----------
+FROM python:3.11-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    APP_ENV=production \
+    JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
+    PATH="/usr/lib/jvm/java-17-openjdk-amd64/bin:${PATH}"
+
+# Só runtime dependencies (Java para PySpark, MySQL client)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jre-headless \
+    default-libmysqlclient-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r appuser && useradd -r -g appuser appuser
+
+# Copia dependências Python do stage de build
+COPY --from=builder /install /usr/local
+
+WORKDIR /app
+
+# Copia apenas o necessário (sem tests, notebooks, dados brutos)
+COPY --chown=appuser:appuser app.py main.py ./
+COPY --chown=appuser:appuser config/ ./config/
+COPY --chown=appuser:appuser src/ ./src/
+COPY --chown=appuser:appuser data/schema.sql ./data/schema.sql
+
+# Cria diretório de processamento
+RUN mkdir -p /app/data/processed /app/data/raw \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+EXPOSE 8000
+
+# Gunicorn + Uvicorn workers em produção
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

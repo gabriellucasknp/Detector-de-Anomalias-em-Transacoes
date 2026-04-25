@@ -1,0 +1,21 @@
+# =====================================================================
+# Exemplo de terraform.tfvars
+# Copie para terraform.tfvars e preencha os valores reais.
+# NUNCA commite terraform.tfvars no git (já está no .gitignore).
+# =====================================================================
+
+aws_region    = "us-east-1"
+project_name  = "anomaly-detector"
+environment   = "prod"
+
+# ECS
+container_cpu    = 1024
+container_memory = 2048
+desired_count    = 2
+
+# RDS
+db_instance_class    = "db.t3.micro"
+db_allocated_storage = 20
+db_name              = "anomaly_db"
+db_username          = "admin"
+db_password          = "TROQUE_POR_UMA_SENHA_FORTE"
