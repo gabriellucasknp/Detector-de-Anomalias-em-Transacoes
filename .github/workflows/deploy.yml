@@ -1,8 +1,10 @@
 # =====================================================================
-# CI/CD Pipeline - Deploy automático para AWS ECS
-# Dispara em push para main: testa → build → push ECR → deploy ECS
 # =====================================================================
-name: CI/CD - Deploy AWS
+# CI Pipeline — Testes automáticos em todo push/PR
+# Deploy na AWS é opcional: só roda se os secrets AWS_* estiverem
+# configurados no repositório (Settings → Secrets).
+# =====================================================================
+name: CI — Testes
 
 on:
     push:
@@ -11,112 +13,108 @@ on:
         branches: [ main ]
     workflow_dispatch:
 
-env:
-    AWS_REGION: us-east-1
-    ECR_REPOSITORY: anomaly-detector
-    ECS_CLUSTER: anomaly-detector-cluster
-    ECS_SERVICE: anomaly-detector-service
-    CONTAINER_NAME: anomaly-detector-app
-
 jobs:
     # -------------------------------------------------------------------
-    # Job 1: Testes e qualidade de código
+    # Job 1: Testes unitários (sempre roda)
     # -------------------------------------------------------------------
     test:
-        name: Testes e Lint
+        name: ✅ Testes
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
               uses: actions/checkout@v4
 
-            - name: Setup Python
+            - name: Setup Python 3.11
               uses: actions/setup-python@v5
               with:
                   python-version: "3.11"
                   cache: pip
 
-            - name: Setup Java (para PySpark)
+            - name: Setup Java 17 (PySpark)
               uses: actions/setup-java@v4
               with:
                   distribution: temurin
                   java-version: "17"
 
-            - name: Install dependencies
+            - name: Instalar dependências
               run: |
                   python -m pip install --upgrade pip
                   pip install -r requirements.txt
 
-            - name: Lint (black + isort)
-              run: |
-                  black --check src/ tests/ app.py main.py || true
-                  isort --check-only src/ tests/ app.py main.py || true
-
-            - name: Run tests
-              run: pytest tests/ -v --cov=src --cov-report=term-missing
+            - name: Rodar testes
+              run: pytest tests/ -v --tb=short --cov=src --cov-report=term-missing
 
     # -------------------------------------------------------------------
-    # Job 2: Build da imagem Docker e push para ECR
+    # Job 2: Build Docker (valida que a imagem compila — sem push)
     # -------------------------------------------------------------------
-    build-and-push:
-        name: Build & Push Docker to ECR
+    docker-build:
+        name: 🐳 Docker Build
         needs: test
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         runs-on: ubuntu-latest
-        outputs:
-            image: ${{ steps.build.outputs.image }}
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         steps:
             - name: Checkout
               uses: actions/checkout@v4
 
-            - name: Configure AWS credentials
+            - name: Build imagem de produção
+              run: docker build -f deploy/Dockerfile.prod -t anomaly-detector:ci .
+
+    # -------------------------------------------------------------------
+    # Job 3: Deploy AWS — só roda se os secrets estiverem configurados
+    # Para ativar: adicione AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY
+    # em Settings → Secrets → Actions do repositório.
+    # -------------------------------------------------------------------
+    deploy-aws:
+        name: 🚀 Deploy AWS (opcional)
+        needs: docker-build
+        runs-on: ubuntu-latest
+        if: |
+            github.event_name == 'push' &&
+            github.ref == 'refs/heads/main' &&
+            secrets.AWS_ACCESS_KEY_ID != ''
+        env:
+            AWS_REGION: us-east-1
+            ECR_REPOSITORY: anomaly-detector
+            ECS_CLUSTER: anomaly-detector-cluster
+            ECS_SERVICE: anomaly-detector-service
+            CONTAINER_NAME: anomaly-detector-app
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Configurar credenciais AWS
               uses: aws-actions/configure-aws-credentials@v4
               with:
                   aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
                   aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
                   aws-region: ${{ env.AWS_REGION }}
 
-            - name: Login to Amazon ECR
+            - name: Login no ECR
               id: ecr-login
               uses: aws-actions/amazon-ecr-login@v2
 
-            - name: Build & Push Docker image
+            - name: Build & Push para ECR
               id: build
               env:
                   ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
                   IMAGE_TAG: ${{ github.sha }}
               run: |
-                  docker build -f deploy/Dockerfile.prod -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+                  docker build -f deploy/Dockerfile.prod \
+                    -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+                    -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
                   docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
                   docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
                   echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-    # -------------------------------------------------------------------
-    # Job 3: Deploy para ECS
-    # -------------------------------------------------------------------
-    deploy:
-        name: Deploy to ECS Fargate
-        needs: build-and-push
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
-
-            - name: Configure AWS credentials
-              uses: aws-actions/configure-aws-credentials@v4
-              with:
-                  aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-                  aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-                  aws-region: ${{ env.AWS_REGION }}
-
-            - name: Update ECS task definition
+            - name: Atualizar task definition ECS
               id: task-def
               uses: aws-actions/amazon-ecs-render-task-definition@v1
               with:
                   task-definition: deploy/ecs-task-definition.json
                   container-name: ${{ env.CONTAINER_NAME }}
-                  image: ${{ needs.build-and-push.outputs.image }}
+                  image: ${{ steps.build.outputs.image }}
 
-            - name: Deploy to ECS
+            - name: Deploy no ECS Fargate
               uses: aws-actions/amazon-ecs-deploy-task-definition@v1
               with:
                   task-definition: ${{ steps.task-def.outputs.task-definition }}
